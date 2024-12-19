@@ -30,10 +30,10 @@ jobs:
 
     - name: Build and push Docker image to ECR
       run: |
-        IMAGE_TAG=latest
-        REPOSITORY_URI=$(aws ecr describe-repositories --repository-names my-app-repo --query 'repositories[0].repositoryUri' --output text)
-        docker build -t $REPOSITORY_URI:$IMAGE_TAG .
-        docker push $REPOSITORY_URI:$IMAGE_TAG
+        docker build -t my-app ./src
+        docker tag my-app:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/my-app-repo:latest
+        docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/my-app-repo:latest
+    
 
   deploy:
     runs-on: ubuntu-latest
