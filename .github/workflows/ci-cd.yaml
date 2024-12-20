@@ -1,4 +1,4 @@
-name: CI/CD Pipeline with SonarQube and Manual Approvals
+name: CI/CD Pipeline with SonarQube, Docker, and AWS
 
 on:
   push:
@@ -6,13 +6,14 @@ on:
       - main
 
 jobs:
-  # Dev Stage
+  # Dev Stage - Building and pushing Docker images
   dev:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # SonarQube Scan for code quality
       - name: SonarQube Scan
         uses: sonarsource/sonarcloud-github-action@v1.8
         with:
@@ -20,6 +21,7 @@ jobs:
           organization: my-organization-regov
           token: ${{ secrets.SONAR_TOKEN }}
 
+      # Configure AWS Credentials
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v1
         with:
@@ -27,12 +29,35 @@ jobs:
           aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws_region: "ap-southeast-1"
 
-      - name: Terraform Apply (Dev)
+      # Build Docker Image
+      - name: Build Docker Image
+        run: |
+          docker build -t my-app-regov ./src
+
+      # Login to Amazon ECR
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+        with:
+          region: "ap-southeast-1"
+
+      # Push Docker Image to ECR
+      - name: Push Docker Image to ECR
+        run: |
+          IMAGE_TAG="my-app-regov:${GITHUB_SHA}"
+          ECR_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/my-app-repository"
+          docker tag my-app-regov:latest $ECR_URI:$IMAGE_TAG
+          docker push $ECR_URI:$IMAGE_TAG
+
+      # Terraform Init and Apply for Dev Stage
+      - name: Terraform Init (Dev)
         run: |
           terraform init
+
+      - name: Terraform Apply (Dev)
+        run: |
           terraform apply -auto-approve
 
-  # QA Stage
+  # QA Stage - Deployment and validation
   qa:
     runs-on: ubuntu-latest
     needs: dev
@@ -40,6 +65,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # SonarQube Scan for QA Stage
       - name: SonarQube Scan
         uses: sonarsource/sonarcloud-github-action@v1.8
         with:
@@ -47,12 +73,12 @@ jobs:
           organization: my-organization-regov
           token: ${{ secrets.SONAR_TOKEN }}
 
+      # Terraform Apply (QA)
       - name: Terraform Apply (QA)
         run: |
-          terraform init
           terraform apply -auto-approve
 
-  # UAT Stage
+  # UAT Stage - Further testing before Prod
   uat:
     runs-on: ubuntu-latest
     needs: qa
@@ -60,6 +86,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # SonarQube Scan for UAT Stage
       - name: SonarQube Scan
         uses: sonarsource/sonarcloud-github-action@v1.8
         with:
@@ -67,12 +94,12 @@ jobs:
           organization: my-organization-regov
           token: ${{ secrets.SONAR_TOKEN }}
 
+      # Terraform Apply (UAT)
       - name: Terraform Apply (UAT)
         run: |
-          terraform init
           terraform apply -auto-approve
 
-  # Prod Stage
+  # Prod Stage - Final deployment
   prod:
     runs-on: ubuntu-latest
     needs: uat
@@ -80,28 +107,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      # SonarQube Scan for Prod Stage
       - name: SonarQube Scan
         uses: sonarsource/sonarcloud-github-action@v1.8
         with:
           projectKey: my-app-key-regov
           organization: my-organization-regov
           token: ${{ secrets.SONAR_TOKEN }}
-       
-      - name: Run SonarQube Scan
-        run: |
-          echo "Running SonarQube scan..."
-          sonar-scanner # This assumes the scanner is installed on the runner. GitHub Action will handle this.
-          
 
+      # Terraform Apply (Prod)
       - name: Terraform Apply (Prod)
         run: |
-          terraform init
           terraform apply -auto-approve
 
-    # Manual Approval for Production Deployment
+  # Manual Approval for Production Deployment
   approval:
     runs-on: ubuntu-latest
+    needs: prod
     steps:
       - name: Manual Approval
         run: |
           echo "Waiting for manual approval to deploy to production."
+          # The job will pause here until you manually approve it
+
+      - name: Confirm Approval and Deploy to Prod
+        run: |
+          echo "Manual approval received. Deploying to production."
