@@ -51,8 +51,29 @@ jobs:
 
     - name: Deploy to Fargate
       run: |
+        # Register ECS Task Definition
+        aws ecs register-task-definition \
+          --family my-app-task \
+          --network-mode awsvpc \
+          --container-definitions '[
+            {
+              "name": "my-app-container",
+              "image": "${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/my-app-repo:latest",
+              "memory": "512",
+              "cpu": "256",
+              "essential": true,
+              "portMappings": [
+                {
+                  "containerPort": 80,
+                  "hostPort": 80
+                }
+              ]
+            }
+          ]'
+
+        # Run ECS Task on Fargate
         aws ecs update-service \
-          --cluster my-ecs-cluster \
+          --cluster my-cluster \
           --service my-app-service \
-          --force-new-deployment \
-          --region ap-southeast-1
+          --task-definition my-app-task \
+          --desired-count 1
