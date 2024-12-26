@@ -81,5 +81,4 @@ jobs:
           --service my-app-service \
           --task-definition my-app-task \
           --desired-count 1 \
-          --launch-type FARGATE  
           --network-configuration "awsvpcConfiguration={subnets=[subnet-0d7d6301178ce8c7f],assignPublicIp=ENABLED}" 
