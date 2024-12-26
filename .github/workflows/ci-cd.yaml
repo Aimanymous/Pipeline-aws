@@ -73,7 +73,7 @@ jobs:
 
         # Run ECS Task on Fargate
         aws ecs update-service \
-          --cluster my-cluster \
+          --cluster my-ecs-cluster \
           --service my-app-service \
           --task-definition my-app-task \
           --desired-count 1
