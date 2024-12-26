@@ -56,6 +56,8 @@ jobs:
           --family my-app-task \
           --network-mode awsvpc \
           --requires-compatibilities FARGATE \
+          --cpu "256" \
+          --memory "512" \
           --container-definitions '[
             {
               "name": "my-app-container",
