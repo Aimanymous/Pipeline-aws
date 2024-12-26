@@ -58,6 +58,7 @@ jobs:
           --requires-compatibilities FARGATE \
           --cpu "256" \
           --memory "512" \
+          --execution-role-arn arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/ecs-execution-role \
           --container-definitions '[
             {
               "name": "my-app-container",
