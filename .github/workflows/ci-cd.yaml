@@ -55,6 +55,7 @@ jobs:
         aws ecs register-task-definition \
           --family my-app-task \
           --network-mode awsvpc \
+          --requires-compatibilities FARGATE \
           --container-definitions '[
             {
               "name": "my-app-container",
