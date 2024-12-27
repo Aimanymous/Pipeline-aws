@@ -1,135 +1,123 @@
-name: CI/CD Pipeline with SonarQube, Docker, and AWS
+name: CI/CD Pipeline
 
 on:
   push:
     branches:
-      - main
+      - Deploy
 
 jobs:
-  # Dev Stage - Building and pushing Docker images
-  dev:
+  # Step 1: Build and Push Docker Image
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # SonarQube Scan for code quality
-      - name: SonarQube Scan
-        uses: sonarsource/sonarcloud-github-action@v1.8
-        with:
-          projectKey: my-app-key-regov
-          organization: my-organization-regov
-          token: ${{ secrets.SONAR_TOKEN }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-      # Configure AWS Credentials
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws_region: "ap-southeast-1"
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
 
-      # Build Docker Image
-      - name: Build Docker Image
-        run: |
-          docker build -t my-app-regov ./src
-
-      # Login to Amazon ECR
-      - name: Login to Amazon ECR
+      - name: Log in to Amazon ECR
+        env:
+          AWS_REGION: ap-southeast-1
         uses: aws-actions/amazon-ecr-login@v1
-        with:
-          region: "ap-southeast-1"
 
-      # Push Docker Image to ECR
-      - name: Push Docker Image to ECR
+      - name: Build and push Docker image to ECR
         run: |
-          IMAGE_TAG="my-app-regov:${GITHUB_SHA}"
-          ECR_URI="${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/my-app-repository"
-          docker tag my-app-regov:latest $ECR_URI:$IMAGE_TAG
-          docker push $ECR_URI:$IMAGE_TAG
+          docker build -t my-app ./src
+          docker tag my-app:latest ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/my-app-repo:latest
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.ap-southeast-1.amazonaws.com/my-app-repo:latest
 
-      # Terraform Init and Apply for Dev Stage
-      - name: Terraform Init (Dev)
-        run: |
-          terraform init
-
-      - name: Terraform Apply (Dev)
-        run: |
-          terraform apply -auto-approve
-
-  # QA Stage - Deployment and validation
-  qa:
+  # Step 2: Deploy to Development
+  deploy-dev:
     runs-on: ubuntu-latest
-    needs: dev
+    needs: build
+    environment:
+      name: dev
+      url: https://dev.my-app.com
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # SonarQube Scan for QA Stage
-      - name: SonarQube Scan
-        uses: sonarsource/sonarcloud-github-action@v1.8
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          projectKey: my-app-key-regov
-          organization: my-organization-regov
-          token: ${{ secrets.SONAR_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  
 
-      # Terraform Apply (QA)
-      - name: Terraform Apply (QA)
+      - name: Deploy to ECS Dev Environment
         run: |
-          terraform apply -auto-approve
+          aws ecs update-service \
+            --cluster my-ecs-cluster \
+            --service dev-my-app-service \
+            --force-new-deployment
 
-  # UAT Stage - Further testing before Prod
-  uat:
+  # Step 3: Deploy to QA
+  deploy-qa:
     runs-on: ubuntu-latest
-    needs: qa
+    needs: deploy-dev
+    environment:
+      name: qa
+      url: https://qa.my-app.com
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # SonarQube Scan for UAT Stage
-      - name: SonarQube Scan
-        uses: sonarsource/sonarcloud-github-action@v1.8
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          projectKey: my-app-key-regov
-          organization: my-organization-regov
-          token: ${{ secrets.SONAR_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  
 
-      # Terraform Apply (UAT)
-      - name: Terraform Apply (UAT)
+      - name: Deploy to ECS QA Environment
         run: |
-          terraform apply -auto-approve
+          aws ecs update-service \
+            --cluster my-ecs-cluster \
+            --service qa-my-app-service \
+            --force-new-deployment
 
-  # Prod Stage - Final deployment
-  prod:
+  # Step 4: Deploy to UAT
+  deploy-uat:
     runs-on: ubuntu-latest
-    needs: uat
+    needs: deploy-qa
+    environment:
+      name: uat
+      url: https://uat.my-app.com
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      # SonarQube Scan for Prod Stage
-      - name: SonarQube Scan
-        uses: sonarsource/sonarcloud-github-action@v1.8
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          projectKey: my-app-key-regov
-          organization: my-organization-regov
-          token: ${{ secrets.SONAR_TOKEN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  
 
-      # Terraform Apply (Prod)
-      - name: Terraform Apply (Prod)
+      - name: Deploy to ECS UAT Environment
         run: |
-          terraform apply -auto-approve
+          aws ecs update-service \
+            --cluster my-ecs-cluster \
+            --service uat-my-app-service \
+            --force-new-deployment
 
-  # Manual Approval for Production Deployment
-  approval:
+  # Step 5: Deploy to Production
+  deploy-prod:
     runs-on: ubuntu-latest
-    needs: prod
+    needs: deploy-uat
+    environment:
+      name: production
+      url: https://prod.my-app.com
     steps:
-      - name: Manual Approval
-        run: |
-          echo "Waiting for manual approval to deploy to production."
-          # The job will pause here until you manually approve it
+      - name: Configure AWS CLI
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  
 
-      - name: Confirm Approval and Deploy to Prod
+      - name: Deploy to ECS Production Environment
         run: |
-          echo "Manual approval received. Deploying to production."
+          aws ecs update-service \
+            --cluster my-ecs-cluster \
+            --service prod-my-app-service \
+            --force-new-deployment
